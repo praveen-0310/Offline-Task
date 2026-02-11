@@ -50,14 +50,23 @@ export const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
         })
       ).unwrap();
 
-      // dispatch actions to update state
+      // Add task to local state
       dispatch(addTaskLocal(result.task));
-      dispatch(enqueueSyncOperation(result.syncOp));
+
+      // Only enqueue sync operation if offline (syncOp will be null if online)
+      if (result.syncOp) {
+        dispatch(enqueueSyncOperation(result.syncOp));
+      }
 
       setSubmitting(false);
 
+      // Show different messages for online vs offline creation
+      const successMessage = result.wasOnline
+        ? 'Task created and synced successfully!'
+        : 'Task created. It will sync when online.';
+
       setTimeout(() => {
-        Alert.alert('Success', 'Task created. It will sync when online.', [
+        Alert.alert('Success', successMessage, [
           {
             text: 'OK',
             onPress: () => {
@@ -71,8 +80,12 @@ export const CreateTaskScreen: React.FC<Props> = ({ navigation }) => {
       setSubmitting(false);
 
       // Show error alert with delay
+      const errorMessage = typeof error === 'string'
+        ? error
+        : 'Failed to create task. Please try again.';
+
       setTimeout(() => {
-        Alert.alert('Error', 'Failed to create task. Please try again.');
+        Alert.alert('Error', errorMessage);
       }, 100);
     }
   };
