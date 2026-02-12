@@ -1,6 +1,6 @@
 // Core domain types
 export type SyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
-export type Operation = 'CREATE' | 'UPDATE';
+export type Operation = 'CREATE' | 'UPDATE' | 'DELETE';
 
 export interface Task {
   id: string;

@@ -63,6 +63,10 @@ export const tasksSlice = createSlice({
       state.loading = false;
     },
 
+    deleteTaskLocal: (state, action: PayloadAction<string>) => {
+      delete state.items[action.payload];
+    },
+
     clearTasks: (state) => {
       state.items = {};
       state.error = null;
@@ -88,6 +92,7 @@ export const {
   addTaskLocal,
   updateTaskLocal,
   updateSyncStatus,
+  deleteTaskLocal,
   setTasks,
   setTasksLoading,
   setTasksError,

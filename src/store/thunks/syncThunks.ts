@@ -5,8 +5,8 @@ import { storageService } from '../../services/storage';
 import { SyncQueue, Task } from '../../types';
 import { generateId } from '../../utils/helpers';
 import { MAX_RETRIES, BACKOFF_MULTIPLIER } from '../../config/constants';
-import { updateSyncStatus } from '../slices/tasksSlice';
-import { removeSyncOperation, updateSyncOperation } from '../slices/syncSlice';
+import { updateSyncStatus, deleteTaskLocal } from '../slices/tasksSlice';
+import { removeSyncOperation, updateSyncOperation, enqueueSyncOperation } from '../slices/syncSlice';
 import { authReady } from '../../config/firebase';
 
 // to prevent duplicate sync operations
@@ -164,6 +164,59 @@ export const updateTask = createAsyncThunk(
   }
 );
 
+export const deleteTask = createAsyncThunk(
+  'sync/deleteTask',
+  async (taskId: string, { getState, dispatch, rejectWithValue }) => {
+    try {
+      const state = getState() as RootState;
+      const task = state.tasks.items[taskId];
+
+      if (!task) {
+        return rejectWithValue('Task not found');
+      }
+
+      const isOnline = state.network.isConnected && state.network.isInternetReachable !== false;
+
+      if (isOnline) {
+        try {
+          await api.deleteTask(taskId);
+          dispatch(deleteTaskLocal(taskId));
+          return { taskId, wasOnline: true };
+        } catch (error) {
+          if (error instanceof APIError && !error.retryable) {
+            console.warn('Permanent API error:', error);
+            return rejectWithValue(error.message);
+          }
+          console.warn('API call failed, falling back to offline mode:', error);
+        }
+      }
+
+      // Delete locally first
+      dispatch(deleteTaskLocal(taskId));
+
+      // Then enqueue for sync
+      const now = Date.now();
+      const syncQueueId = generateId();
+
+      const syncOp: SyncQueue = {
+        id: syncQueueId,
+        taskId,
+        operation: 'DELETE',
+        payload: {},
+        retryCount: 0,
+        createdAt: now,
+      };
+
+      dispatch(enqueueSyncOperation(syncOp));
+
+      return { taskId, syncOp, wasOnline: false };
+    } catch (error) {
+      console.warn('Error deleting task:', error);
+      return rejectWithValue('Failed to delete task');
+    }
+  }
+);
+
 
 export const processSyncQueue = createAsyncThunk(
   'sync/processQueue',
@@ -239,6 +292,13 @@ export const processSyncQueue = createAsyncThunk(
                 status: 'SYNCED',
                 serverData: updatedTask,
               }));
+              dispatch(removeSyncOperation(opId));
+              break;
+            }
+
+            case 'DELETE': {
+              await api.deleteTask(operation.taskId);
+              dispatch(deleteTaskLocal(operation.taskId));
               dispatch(removeSyncOperation(opId));
               break;
             }

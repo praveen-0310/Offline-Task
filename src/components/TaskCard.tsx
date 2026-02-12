@@ -14,10 +14,11 @@ import { SyncStatusBadge } from './SyncStatusBadge';
 interface Props {
   task: Task;
   onEditPress: () => void;
+  onDeletePress: () => void;
   index?: number;
 }
 
-export const TaskCard: React.FC<Props> = ({ task, onEditPress, index = 0 }) => {
+export const TaskCard: React.FC<Props> = ({ task, onEditPress, onDeletePress, index = 0 }) => {
   const slideAnim = useRef(new Animated.Value(50)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -69,15 +70,24 @@ export const TaskCard: React.FC<Props> = ({ task, onEditPress, index = 0 }) => {
           </View>
         </View>
 
-        {isEditable && (
+        <View style={stylesheet.actions}>
+          {isEditable && (
+            <TouchableOpacity
+              style={stylesheet.editButton}
+              onPress={onEditPress}
+              activeOpacity={0.7}
+            >
+              <Text style={stylesheet.editIcon}>✎</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
-            style={stylesheet.editButton}
-            onPress={onEditPress}
+            style={stylesheet.deleteButton}
+            onPress={onDeletePress}
             activeOpacity={0.7}
           >
-            <Text style={stylesheet.editIcon}>✎</Text>
+            <Text style={stylesheet.deleteIcon}>🗑</Text>
           </TouchableOpacity>
-        )}
+        </View>
       </View>
     </Animated.View>
   );
@@ -142,6 +152,10 @@ const stylesheet = StyleSheet.create({
     color: '#9CA3AF',
     fontWeight: '500',
   },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   editButton: {
     paddingHorizontal: 12,
     paddingVertical: 8,
@@ -151,6 +165,17 @@ const stylesheet = StyleSheet.create({
   editIcon: {
     fontSize: 18,
     color: '#6366F1',
+    fontWeight: '600',
+  },
+  deleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteIcon: {
+    fontSize: 18,
+    color: '#EF4444',
     fontWeight: '600',
   },
 });

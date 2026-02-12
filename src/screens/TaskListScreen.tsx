@@ -17,7 +17,7 @@ import {
   LoadingSpinner,
   Button,
 } from '../components';
-import { processSyncQueue } from '../store/thunks/syncThunks';
+import { processSyncQueue, deleteTask } from '../store/thunks/syncThunks';
 import { selectTasksArray } from '../store/slices/tasksSlice';
 import { Task } from '../types';
 
@@ -34,6 +34,27 @@ export const TaskListScreen: React.FC<Props> = ({ navigation }) => {
     navigation.navigate('EditTask', { taskId: task.id });
   };
 
+  const handleDeletePress = (task: Task) => {
+    Alert.alert(
+      'Delete Task',
+      `Are you sure you want to delete "${task.title}"?`,
+      [
+        {
+          text: 'Cancel',
+          onPress: () => {},
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          onPress: () => {
+            dispatch(deleteTask(task.id));
+          },
+          style: 'destructive',
+        },
+      ]
+    );
+  };
+
   const handleRetrySync = () => {
     if (isConnected) {
       dispatch(processSyncQueue());
@@ -46,6 +67,7 @@ export const TaskListScreen: React.FC<Props> = ({ navigation }) => {
     <TaskCard
       task={item}
       onEditPress={() => handleEditPress(item)}
+      onDeletePress={() => handleDeletePress(item)}
       index={index}
     />
   );
