@@ -44,8 +44,3 @@ export interface AppState {
   };
   network: NetworkState;
 }
-
-export interface ValidationError {
-  field: string;
-  message: string;
-}
