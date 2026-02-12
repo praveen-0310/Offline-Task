@@ -37,8 +37,8 @@ A production-level React Native application with offline-first architecture, int
 - ✅ **React Navigation**: Screen transitions
 - ✅ **NetInfo**: Network detection
 - ✅ **Formik + Yup**: Form validation
-- ✅ **Custom Hooks**: Reusable logic
-- ✅ **Reusable Components**: 6 UI components
+- ✅ **Custom Hooks**: 4 reusable hooks for network detection and Redux
+- ✅ **Reusable Components**: 7 UI components (TaskCard, FormInput, Button, SyncStatusBadge, NetworkIndicator, LoadingSpinner)
 
 ---
 
