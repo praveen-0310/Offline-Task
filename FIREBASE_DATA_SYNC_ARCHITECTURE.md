@@ -1925,3 +1925,264 @@ This architecture provides:
 - `src/services/storage.ts` - Local persistence
 - `src/hooks/useSyncOnNetworkRestore.ts` - Auto-sync
 
+---
+
+## Recent Updates (February 12, 2026)
+
+### 1. Multi-Device Consistency Implementation ✅
+
+**Problem:** Different devices (APK, emulator, phone) showed different data even with same Firebase user.
+
+**Root Cause:**
+- Same Firebase User ✅ (both sign in with fixed email)
+- Different Local Storage ❌ (AsyncStorage is device-specific)
+- Lazy Bootstrap ❌ (only fetched if local storage empty)
+
+**Solution:** Always fetch from Firebase on app startup
+
+#### Updated `bootstrapApp` thunk:
+```typescript
+export const bootstrapApp = createAsyncThunk(
+  'sync/bootstrap',
+  async (_, { rejectWithValue }) => {
+    try {
+      await authReady;
+
+      const [tasks, syncQueue, lastSync] = await Promise.all([
+        storageService.getTasks(),
+        storageService.getSyncQueue(),
+        storageService.getLastSync(),
+      ]);
+
+      // ✅ NOW: Always fetch from Firebase (not just if local storage empty)
+      try {
+        console.log('📥 Fetching latest tasks from Firebase...');
+        const firebaseTasks = await api.fetchTasks();
+        const firebaseTasksMap: Record<string, Task> = {};
+
+        firebaseTasks.forEach((task) => {
+          firebaseTasksMap[task.id] = task;
+        });
+
+        // Save fetched tasks to local storage
+        await storageService.saveTasks(firebaseTasksMap);
+        console.log('✅ Successfully synced', firebaseTasks.length, 'tasks from Firebase');
+
+        return { tasks: firebaseTasksMap, syncQueue, lastSync };
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch from Firebase, using local cache:', error);
+        // Fall back to local cache if Firebase fetch fails
+        return { tasks, syncQueue, lastSync };
+      }
+    } catch (error) {
+      console.warn('Bootstrap failed, starting with empty state:', error);
+      return rejectWithValue('Failed to bootstrap app');
+    }
+  }
+);
+```
+
+**Impact:**
+- ✅ All devices show same data (same Firebase user = same Firestore data)
+- ✅ Tasks stay in sync across APK and emulator
+- ✅ Works after app restart, clear data, or reinstall
+
+---
+
+### 2. New `forceRefreshTasks` Thunk
+
+Added manual refresh capability for users who suspect stale data:
+
+```typescript
+export const forceRefreshTasks = createAsyncThunk(
+  'sync/forceRefresh',
+  async (_, { rejectWithValue }) => {
+    try {
+      console.log('🔄 Force refreshing tasks from Firebase...');
+
+      const firebaseTasks = await api.fetchTasks();
+      const firebaseTasksMap: Record<string, Task> = {};
+
+      firebaseTasks.forEach((task) => {
+        firebaseTasksMap[task.id] = task;
+      });
+
+      // Save fetched tasks to local storage
+      await storageService.saveTasks(firebaseTasksMap);
+      console.log('✅ Force refresh complete:', firebaseTasks.length, 'tasks');
+
+      return { tasks: firebaseTasksMap, refreshTime: Date.now() };
+    } catch (error) {
+      console.warn('❌ Force refresh failed:', error);
+      return rejectWithValue(error instanceof Error ? error.message : 'Force refresh failed');
+    }
+  }
+);
+```
+
+**Use Cases:**
+- User adds task on phone, wants to see it on emulator immediately
+- Suspect sync didn't complete properly
+- Manual trigger for instant data refresh
+
+---
+
+### 3. Firebase API Enhancement
+
+Added `getCurrentUserInfo()` debug method to `src/services/firebaseAPI.ts`:
+
+```typescript
+getCurrentUserInfo(): { uid: string; email: string | null } {
+  const user = auth.currentUser;
+  if (!user) {
+    return { uid: 'NOT_AUTHENTICATED', email: null };
+  }
+  return {
+    uid: user.uid,
+    email: user.email,
+  };
+}
+```
+
+**Purpose:**
+- Debug helper to verify current authenticated user
+- Display user email in header
+- Verify same user across devices
+
+---
+
+### 4. User Email Display in Header
+
+Added user email display to header (right side):
+
+**Implementation in `src/screens/TaskListScreen.tsx`:**
+
+```typescript
+const [userEmail, setUserEmail] = useState<string | null>(null);
+
+useEffect(() => {
+  // Wait for auth to be ready, then get user email
+  authReady.then(() => {
+    const userInfo = firebaseAPI.getCurrentUserInfo();
+    console.log('📧 User info:', userInfo);
+    setUserEmail(userInfo.email);
+  }).catch((error) => {
+    console.warn('Failed to load user info:', error);
+  });
+}, []);
+
+// In JSX
+<View style={stylesheet.header}>
+  <Text style={stylesheet.headerTitle}>Tasks</Text>
+  {userEmail && (
+    <Text style={stylesheet.headerEmail}>{userEmail}</Text>
+  )}
+</View>
+```
+
+**Styling:**
+```typescript
+headerEmail: {
+  fontSize: 12,
+  color: '#6B7280',
+  fontWeight: '500',
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  backgroundColor: '#F3F4F6',
+  borderRadius: 6,
+}
+```
+
+**Display:**
+```
+Tasks                                  praveen.j.chand@gmail.com
+```
+
+---
+
+### 5. Code Cleanup
+
+Removed unused code:
+- ❌ Deleted `src/services/restAPI.ts` (Firebase is primary API)
+- ❌ Deleted `src/hooks/useAuth.ts` (using fixed user auth instead)
+- ❌ Removed unused helper functions (validateTaskForm, getErrorMessage, debounce)
+- ❌ Removed unused ValidationError type
+- ❌ Cleaned up storage config (removed commented MMKV adapter code)
+
+---
+
+## Testing Multi-Device Sync
+
+### Test 1: Emulator + APK
+1. Open app on emulator → See tasks from Firebase ✅
+2. Open app on physical device APK → See **same** tasks ✅
+3. Add task on emulator → See on APK within seconds ✅
+4. Delete task on APK → Gone on emulator ✅
+
+### Test 2: Offline + Online
+1. Turn off network
+2. Create task → Shows PENDING status
+3. Turn on network → Auto-syncs, shows SYNCED ✅
+
+### Test 3: App Data Clear
+1. Settings → Apps → OfflineTask → Clear Data
+2. Reopen app → Same user still signed in ✅
+3. All tasks restored from Firebase ✅
+
+### Test 4: Verify Same User
+1. Check header email on emulator → `praveen.j.chand@gmail.com`
+2. Check header email on APK → `praveen.j.chand@gmail.com` ✅
+3. Both have same Firebase UID (check console logs) ✅
+
+---
+
+## Architecture Diagram (Updated)
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Multiple Devices (Emulator, APK, Phone)            │
+└────────────────┬──────────────────────────────────┘
+                 │
+                 ├─ All sign in as: praveen.j.chand@gmail.com
+                 │
+                 ▼
+         ┌───────────────────┐
+         │  Firebase Auth    │
+         │  (Fixed User)     │
+         └────────┬──────────┘
+                  │
+                  │ Same UID: n8XeJHnnBPgRH1kQBHjvpD90DYy1
+                  │
+                  ▼
+         ┌───────────────────────┐
+         │  Firestore Database   │
+         │  /users/{uid}/tasks/  │ ← Single source of truth
+         └────────┬──────────────┘
+                  │
+          ┌───────┴───────┬──────────────┐
+          │               │              │
+          ▼               ▼              ▼
+    Emulator         APK Phone      Other Devices
+    Local Cache      Local Cache    Local Cache
+    Redux Store      Redux Store    Redux Store
+```
+
+**Key:** All devices connect to **same Firestore collection**, so changes sync automatically ✅
+
+---
+
+## Conclusion
+
+The updated architecture ensures:
+
+| Aspect | Status |
+|--------|--------|
+| **Single User** | Fixed email/password account ✅ |
+| **Multi-Device Sync** | Always fetches from Firebase ✅ |
+| **Offline Support** | Local cache + sync queue ✅ |
+| **Data Persistence** | Survives app clear + reinstall ✅ |
+| **User Visibility** | Email shown in header ✅ |
+| **Code Quality** | Unused code removed ✅ |
+
+**Latest Update:** February 12, 2026 - Multi-device consistency, force refresh, header email display
+
