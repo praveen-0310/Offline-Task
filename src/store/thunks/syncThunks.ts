@@ -7,8 +7,9 @@ import { generateId } from '../../utils/helpers';
 import { MAX_RETRIES, BACKOFF_MULTIPLIER } from '../../config/constants';
 import { updateSyncStatus } from '../slices/tasksSlice';
 import { removeSyncOperation, updateSyncOperation } from '../slices/syncSlice';
+import { authReady } from '../../config/firebase';
 
-// Prevent duplicate sync operations
+// to prevent duplicate sync operations
 const syncInProgressMap = new Map<string, Promise<void>>();
 
 
@@ -16,6 +17,9 @@ export const bootstrapApp = createAsyncThunk(
   'sync/bootstrap',
   async (_, { rejectWithValue }) => {
     try {
+      // wait for Firebase auth to be ready before proceeding
+      await authReady;
+
       const [tasks, syncQueue, lastSync] = await Promise.all([
         storageService.getTasks(),
         storageService.getSyncQueue(),
@@ -30,14 +34,7 @@ export const bootstrapApp = createAsyncThunk(
   }
 );
 
-/**
- * THUNK: Create a new task
- * Online-First Approach:
- * - If online: POST to API immediately, get server response with SYNCED status
- * - If offline: Create locally with PENDING status, enqueue for sync
- * - If online but API fails (retryable): Fall back to offline path
- * - If API error is permanent (4xx): Reject without saving
- */
+
 export const createTask = createAsyncThunk(
   'sync/createTask',
   async (
@@ -48,7 +45,6 @@ export const createTask = createAsyncThunk(
       const state = getState() as RootState;
       const isOnline = state.network.isConnected && state.network.isInternetReachable !== false;
 
-      // ONLINE PATH: Try to post directly to API
       if (isOnline) {
         try {
           const serverTask = await api.createTask({
@@ -56,26 +52,21 @@ export const createTask = createAsyncThunk(
             amount: taskData.amount,
           });
 
-          // Success: return task with SYNCED status, no sync operation needed
           return {
             task: { ...serverTask, syncStatus: 'SYNCED' as const },
             syncOp: null,
             wasOnline: true,
           };
         } catch (error) {
-          // If API error is permanent (4xx), reject immediately
           if (error instanceof APIError && !error.retryable) {
             console.warn('Permanent API error:', error);
             return rejectWithValue(error.message);
           }
 
-          // If API error is retryable (5xx, timeout), fall through to offline path
           console.warn('API call failed, falling back to offline mode:', error);
-          // Continue to offline path below
         }
       }
 
-      // OFFLINE PATH: Create locally and enqueue for sync
       const taskId = generateId();
       const now = Date.now();
 
@@ -114,7 +105,6 @@ export const createTask = createAsyncThunk(
   }
 );
 
-// thunk for updating a task - only allows offline edits to prevent conflicts with server data
 export const updateTask = createAsyncThunk(
   'sync/updateTask',
   async (
@@ -129,7 +119,7 @@ export const updateTask = createAsyncThunk(
         return rejectWithValue('Task not found');
       }
 
-      // Prevent editing synced tasks (design decision: only allow offline edits)
+      // prevent editing synced tasks (design decision: only allow offline edits)
       if (task.syncStatus === 'SYNCED') {
         return rejectWithValue('Cannot edit synced tasks');
       }
@@ -174,23 +164,20 @@ export const processSyncQueue = createAsyncThunk(
     let failureCount = 0;
     const results: Array<{ opId: string; success: boolean; error?: string }> = [];
 
-    // Process operations sequentially to maintain order
+    // process operations sequentially to maintain order
     for (const opId of Object.keys(syncQueue)) {
       const operation = syncQueue[opId];
 
-      // Prevent duplicate sync calls
+      // prevent duplicate sync calls
       if (syncInProgressMap.has(operation.taskId)) {
         continue;
       }
 
-      // Create a promise for this sync operation
       const syncPromise = (async () => {
         try {
           const BACKOFF_DELAY = 1000 * Math.pow(BACKOFF_MULTIPLIER, operation.retryCount); // exponential backoff
 
-          // Don't retry indefinitely
           if (operation.retryCount >= MAX_RETRIES) {
-            // Mark task as FAILED when max retries exceeded
             dispatch(updateSyncStatus({
               id: operation.taskId,
               status: 'FAILED',
@@ -200,9 +187,8 @@ export const processSyncQueue = createAsyncThunk(
             return;
           }
 
-          // Wait before retry
           if (operation.retryCount > 0) {
-            await new Promise((resolve) => setTimeout(resolve, BACKOFF_DELAY));
+            await new Promise((resolve: (value?: any) => void) => setTimeout(resolve, BACKOFF_DELAY));
           }
 
           let serverData: Task | undefined;
@@ -215,13 +201,11 @@ export const processSyncQueue = createAsyncThunk(
               });
               serverData = createdTask;
 
-              // Update task with server data and mark as SYNCED
               dispatch(updateSyncStatus({
                 id: operation.taskId,
                 status: 'SYNCED',
                 serverData: createdTask,
               }));
-              // Remove operation from sync queue
               dispatch(removeSyncOperation(opId));
               break;
             }
@@ -230,13 +214,11 @@ export const processSyncQueue = createAsyncThunk(
               const updatedTask = await api.updateTask(operation.taskId, operation.payload);
               serverData = updatedTask;
 
-              // Update task with server data and mark as SYNCED
               dispatch(updateSyncStatus({
                 id: operation.taskId,
                 status: 'SYNCED',
                 serverData: updatedTask,
               }));
-              // Remove operation from sync queue
               dispatch(removeSyncOperation(opId));
               break;
             }
@@ -248,7 +230,6 @@ export const processSyncQueue = createAsyncThunk(
           const isRetryable = error instanceof APIError ? error.retryable : true;
 
           if (isRetryable && operation.retryCount < MAX_RETRIES) {
-            // Mark for retry - increment retry count
             dispatch(updateSyncOperation({
               id: opId,
               updates: { retryCount: operation.retryCount + 1 },
@@ -259,7 +240,6 @@ export const processSyncQueue = createAsyncThunk(
               error: error instanceof Error ? error.message : 'Unknown error',
             });
           } else {
-            // Permanent failure - mark task as FAILED
             dispatch(updateSyncStatus({
               id: operation.taskId,
               status: 'FAILED',
@@ -287,10 +267,7 @@ export const processSyncQueue = createAsyncThunk(
   }
 );
 
-/**
- * THUNK: Retry a specific failed operation
- * User manually retries from UI
- */
+
 export const retryFailedOperation = createAsyncThunk(
   'sync/retryOperation',
   async (operationId: string, { rejectWithValue }) => {

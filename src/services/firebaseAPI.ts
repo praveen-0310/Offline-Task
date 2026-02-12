@@ -1,3 +1,12 @@
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+  deleteDoc,
+  writeBatch,
+} from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 import { Task } from '../types';
 
@@ -12,34 +21,22 @@ export class APIError extends Error {
   }
 }
 
-/**
- * Firebase API Service
- * Handles all task operations with Firestore
- * Uses React Native Firebase SDK
- */
 export const firebaseAPI = {
-  /**
-   * Get the current user's UID
-   */
+ 
   getCurrentUserId(): string {
-    const userId = auth().currentUser?.uid;
+    const userId = auth.currentUser?.uid;
     if (!userId) {
       throw new APIError(401, 'User not authenticated', true);
     }
     return userId;
   },
 
-  /**
-   * Fetch all tasks from Firestore
-   */
+ 
   async fetchTasks(): Promise<Task[]> {
     try {
       const userId = this.getCurrentUserId();
-      const snapshot = await db()
-        .collection('users')
-        .doc(userId)
-        .collection('tasks')
-        .get();
+      const tasksRef = collection(db, 'users', userId, 'tasks');
+      const snapshot = await getDocs(tasksRef);
 
       const tasks: Task[] = snapshot.docs.map((doc: any) => {
         const data = doc.data();
@@ -63,9 +60,7 @@ export const firebaseAPI = {
     }
   },
 
-  /**
-   * Create a new task in Firestore
-   */
+ 
   async createTask(
     taskData: Omit<Task, 'id' | 'syncStatus' | 'createdAt' | 'updatedAt' | 'localId'>
   ): Promise<Task> {
@@ -73,18 +68,14 @@ export const firebaseAPI = {
       const userId = this.getCurrentUserId();
       const now = Date.now();
 
-      const docRef = await db()
-        .collection('users')
-        .doc(userId)
-        .collection('tasks')
-        .add({
-          title: taskData.title,
-          amount: taskData.amount,
-          createdAt: now,
-          updatedAt: now,
-        });
+      const tasksRef = collection(db, 'users', userId, 'tasks');
+      const docRef = await addDoc(tasksRef, {
+        title: taskData.title,
+        amount: taskData.amount,
+        createdAt: now,
+        updatedAt: now,
+      });
 
-      // Return the created task with the document ID
       return {
         id: docRef.id,
         title: taskData.title,
@@ -102,9 +93,7 @@ export const firebaseAPI = {
     }
   },
 
-  /**
-   * Update an existing task in Firestore
-   */
+
   async updateTask(id: string, updates: Partial<Task>): Promise<Task> {
     try {
       const userId = this.getCurrentUserId();
@@ -121,12 +110,8 @@ export const firebaseAPI = {
 
       updateData.updatedAt = now;
 
-      await db()
-        .collection('users')
-        .doc(userId)
-        .collection('tasks')
-        .doc(id)
-        .update(updateData);
+      const taskRef = doc(db, 'users', userId, 'tasks', id);
+      await updateDoc(taskRef, updateData);
 
       // Return updated task
       return {
@@ -146,18 +131,12 @@ export const firebaseAPI = {
     }
   },
 
-  /**
-   * Delete a task from Firestore
-   */
+ 
   async deleteTask(id: string): Promise<void> {
     try {
       const userId = this.getCurrentUserId();
-      await db()
-        .collection('users')
-        .doc(userId)
-        .collection('tasks')
-        .doc(id)
-        .delete();
+      const taskRef = doc(db, 'users', userId, 'tasks', id);
+      await deleteDoc(taskRef);
     } catch (error) {
       if (error instanceof APIError) {
         throw error;
@@ -166,23 +145,17 @@ export const firebaseAPI = {
     }
   },
 
-  /**
-   * Batch delete multiple tasks
-   */
+  
   async deleteTasks(ids: string[]): Promise<void> {
     try {
       if (ids.length === 0) return;
 
       const userId = this.getCurrentUserId();
-      const batch = db().batch();
+      const batch = writeBatch(db);
 
       ids.forEach((id) => {
-        const docRef = db()
-          .collection('users')
-          .doc(userId)
-          .collection('tasks')
-          .doc(id);
-        batch.delete(docRef);
+        const taskRef = doc(db, 'users', userId, 'tasks', id);
+        batch.delete(taskRef);
       });
 
       await batch.commit();

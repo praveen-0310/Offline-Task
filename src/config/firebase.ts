@@ -1,15 +1,29 @@
-import firebase from '@react-native-firebase/app';
-import '@react-native-firebase/auth';
-import '@react-native-firebase/firestore';
+import { initializeApp } from 'firebase/app';
+import { initializeAuth, signInAnonymously, Auth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 import { FIREBASE_CONFIG } from './constants';
 
-// Initialize Firebase with credentials from constants
-if (!firebase.apps.length) {
-  firebase.initializeApp(FIREBASE_CONFIG);
-}
+// intialize the firebase app with the config
+const app = initializeApp(FIREBASE_CONFIG);
 
-// Get Firebase Auth and Firestore references
-export const auth = firebase.auth() as any;
-export const db = firebase.firestore() as any;
+export const auth: Auth = initializeAuth(app);
 
-export default firebase;
+export const db = getFirestore(app);
+
+// create a promise that resolves when user is authenticated
+const initializeAuthUser = async () => {
+  try {
+    await new Promise((resolve: (value?: any) => void) => setTimeout(resolve, 50));
+
+    if (!auth.currentUser) {
+      await signInAnonymously(auth);
+      console.log('Anonymous user signed in:', auth.currentUser?.uid);
+    }
+  } catch (error) {
+    console.warn('Anonymous sign-in failed:', error);
+  }
+};
+
+export const authReady = initializeAuthUser();
+
+export default app;
