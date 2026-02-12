@@ -2,9 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Provider } from 'react-redux';
 import { store } from './src/store';
 import { RootNavigator } from './src/navigation/RootNavigator';
-import { restoreTasks, restoreSyncQueue, restoreLastSyncTime } from './src/store/persistence';
+import { restoreTasks, restoreSyncQueue } from './src/store/persistence';
 import { setTasks } from './src/store/slices/tasksSlice';
-import { restoreSyncQueue as restoreSyncQueueAction, restoreLastSyncTime as restoreLastSyncTimeAction } from './src/store/slices/syncSlice';
+import { restoreSyncQueue as restoreSyncQueueAction } from './src/store/slices/syncSlice';
 
 export const App: React.FC = () => {
   const [isHydrated, setIsHydrated] = useState(false);
@@ -23,12 +23,6 @@ export const App: React.FC = () => {
         const syncQueueData = await restoreSyncQueue();
         if (syncQueueData) {
           store.dispatch(restoreSyncQueueAction(syncQueueData));
-        }
-
-        // Restore last sync time
-        const lastSyncTime = await restoreLastSyncTime();
-        if (lastSyncTime) {
-          store.dispatch(restoreLastSyncTimeAction(lastSyncTime));
         }
       } catch (error) {
         console.error('Error hydrating store:', error);

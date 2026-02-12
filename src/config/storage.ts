@@ -27,5 +27,4 @@ export const getStorageAdapter = (): StorageAdapter => {
 export const STORAGE_KEYS = {
   TASKS: 'tasks',
   SYNC_QUEUE: 'sync_queue',
-  LAST_SYNC: 'last_sync',
 } as const;

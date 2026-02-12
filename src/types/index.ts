@@ -39,7 +39,6 @@ export interface AppState {
   sync: {
     queue: Record<string, SyncQueue>;
     isSyncing: boolean;
-    lastSyncTime: number | null;
     syncError: string | null;
   };
   network: NetworkState;

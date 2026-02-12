@@ -11,12 +11,10 @@ export const persistState = async (state: RootState): Promise<void> => {
   try {
     const tasksData = JSON.stringify(state.tasks.items);
     const syncQueueData = JSON.stringify(state.sync.queue);
-    const lastSyncData = state.sync.lastSyncTime?.toString() || '';
 
     await storage.multiSet([
       [STORAGE_KEYS.TASKS, tasksData],
       [STORAGE_KEYS.SYNC_QUEUE, syncQueueData],
-      [STORAGE_KEYS.LAST_SYNC, lastSyncData],
     ]);
   } catch (error) {
     console.error('Error persisting state:', error);
@@ -51,20 +49,6 @@ export const restoreSyncQueue = async (): Promise<Record<string, SyncQueue> | nu
   }
 };
 
-// restores the last sync time from AsyncStorage
-
-export const restoreLastSyncTime = async (): Promise<number | null> => {
-  try {
-    const timeData = await storage.getItem(STORAGE_KEYS.LAST_SYNC);
-    if (timeData) {
-      return parseInt(timeData, 10);
-    }
-    return null;
-  } catch (error) {
-    console.error('Error restoring last sync time:', error);
-    return null;
-  }
-};
 
 // clears all persisted data from AsyncStorage
 
@@ -72,7 +56,6 @@ export const clearPersistedState = async (): Promise<void> => {
   try {
     await storage.removeItem(STORAGE_KEYS.TASKS);
     await storage.removeItem(STORAGE_KEYS.SYNC_QUEUE);
-    await storage.removeItem(STORAGE_KEYS.LAST_SYNC);
   } catch (error) {
     console.error('Error clearing persisted state:', error);
   }

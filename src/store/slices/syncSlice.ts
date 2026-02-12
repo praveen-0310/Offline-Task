@@ -4,14 +4,12 @@ import { SyncQueue } from '../../types';
 interface SyncState {
   queue: Record<string, SyncQueue>;
   isSyncing: boolean;
-  lastSyncTime: number | null;
   syncError: string | null;
 }
 
 const initialState: SyncState = {
   queue: {},
   isSyncing: false,
-  lastSyncTime: null,
   syncError: null,
 };
 
@@ -48,11 +46,6 @@ export const syncSlice = createSlice({
       }
     },
 
-    // update last sync timestamp
-    setLastSyncTime: (state) => {
-      state.lastSyncTime = Date.now();
-    },
-
     // set sync error
     setSyncError: (state, action: PayloadAction<string | null>) => {
       state.syncError = action.payload;
@@ -68,11 +61,6 @@ export const syncSlice = createSlice({
     clearSyncQueue: (state) => {
       state.queue = {};
     },
-
-    // restore last sync time from storage
-    restoreLastSyncTime: (state, action: PayloadAction<number>) => {
-      state.lastSyncTime = action.payload;
-    },
   },
 });
 
@@ -81,11 +69,9 @@ export const {
   removeSyncOperation,
   updateSyncOperation,
   setSyncing,
-  setLastSyncTime,
   setSyncError,
   restoreSyncQueue,
   clearSyncQueue,
-  restoreLastSyncTime,
 } = syncSlice.actions;
 
 export default syncSlice.reducer;

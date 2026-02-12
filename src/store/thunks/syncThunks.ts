@@ -20,10 +20,9 @@ export const bootstrapApp = createAsyncThunk(
       // wait for Firebase auth to be ready before proceeding
       await authReady;
 
-      const [tasks, syncQueue, lastSync] = await Promise.all([
+      const [tasks, syncQueue] = await Promise.all([
         storageService.getTasks(),
         storageService.getSyncQueue(),
-        storageService.getLastSync(),
       ]);
 
       // Always try to fetch from Firebase to ensure data consistency across devices
@@ -41,11 +40,11 @@ export const bootstrapApp = createAsyncThunk(
         await storageService.saveTasks(firebaseTasksMap);
         console.log('✅ Successfully synced', firebaseTasks.length, 'tasks from Firebase');
 
-        return { tasks: firebaseTasksMap, syncQueue, lastSync };
+        return { tasks: firebaseTasksMap, syncQueue };
       } catch (error) {
         console.warn('⚠️ Failed to fetch from Firebase, using local cache:', error);
         // Fall back to local cache if Firebase fetch fails
-        return { tasks, syncQueue, lastSync };
+        return { tasks, syncQueue };
       }
     } catch (error) {
       console.warn('Bootstrap failed, starting with empty state:', error);
