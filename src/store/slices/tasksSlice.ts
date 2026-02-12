@@ -1,6 +1,7 @@
 import { createSlice, PayloadAction, createSelector } from '@reduxjs/toolkit';
 import { RootState } from '../index';
 import { Task, SyncStatus } from '../../types';
+import { bootstrapApp } from '../thunks/syncThunks';
 
 interface TasksState {
   items: Record<string, Task>;
@@ -66,6 +67,20 @@ export const tasksSlice = createSlice({
       state.items = {};
       state.error = null;
     },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(bootstrapApp.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(bootstrapApp.fulfilled, (state, action) => {
+        state.loading = false;
+        state.items = action.payload.tasks;
+      })
+      .addCase(bootstrapApp.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
+      });
   },
 });
 

@@ -26,6 +26,26 @@ export const bootstrapApp = createAsyncThunk(
         storageService.getLastSync(),
       ]);
 
+      // If local storage is empty, fetch from Firebase
+      if (Object.keys(tasks).length === 0) {
+        try {
+          const firebaseTasks = await api.fetchTasks();
+          const firebaseTasksMap: Record<string, Task> = {};
+
+          firebaseTasks.forEach((task) => {
+            firebaseTasksMap[task.id] = task;
+          });
+
+          // Save fetched tasks to local storage
+          await storageService.saveTasks(firebaseTasksMap);
+
+          return { tasks: firebaseTasksMap, syncQueue, lastSync };
+        } catch (error) {
+          console.warn('Failed to fetch from Firebase:', error);
+          return { tasks, syncQueue, lastSync };
+        }
+      }
+
       return { tasks, syncQueue, lastSync };
     } catch (error) {
       console.warn('Bootstrap failed, starting with empty state:', error);
