@@ -9,7 +9,7 @@ export interface StorageAdapter {
   clear(): Promise<void>;
 }
 
-// AsyncStorage implementation (fallback)
+// AsyncStorage implementation
 export const asyncStorageAdapter: StorageAdapter = {
   getItem: (key) => AsyncStorage.getItem(key),
   setItem: (key, value) => AsyncStorage.setItem(key, value),
@@ -19,20 +19,8 @@ export const asyncStorageAdapter: StorageAdapter = {
   clear: () => AsyncStorage.clear(),
 };
 
-// MMKV implementation (if available)
-let mmkvAdapter: StorageAdapter | null = null;
-
-try {
-  // Optional: import MMKV if installed
-  // const { MMKV } = require('react-native-mmkv');
-  // const mmkv = new MMKV();
-  // mmkvAdapter = { /* adapter implementation */ };
-} catch {
-  // MMKV not available, fallback to AsyncStorage
-}
-
 export const getStorageAdapter = (): StorageAdapter => {
-  return mmkvAdapter || asyncStorageAdapter;
+  return asyncStorageAdapter;
 };
 
 // Storage keys constants
