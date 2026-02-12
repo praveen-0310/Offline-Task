@@ -181,6 +181,9 @@ export const deleteTask = createAsyncThunk(
         try {
           await api.deleteTask(taskId);
           dispatch(deleteTaskLocal(taskId));
+          // Persist state immediately after online delete
+          const updatedState = getState() as RootState;
+          await storageService.saveTasks(updatedState.tasks.items);
           return { taskId, wasOnline: true };
         } catch (error) {
           if (error instanceof APIError && !error.retryable) {
@@ -208,6 +211,13 @@ export const deleteTask = createAsyncThunk(
       };
 
       dispatch(enqueueSyncOperation(syncOp));
+
+      // Persist both tasks and sync queue for offline deletes
+      const updatedState = getState() as RootState;
+      await Promise.all([
+        storageService.saveTasks(updatedState.tasks.items),
+        storageService.saveSyncQueue(updatedState.sync.queue),
+      ]);
 
       return { taskId, syncOp, wasOnline: false };
     } catch (error) {
@@ -264,15 +274,12 @@ export const processSyncQueue = createAsyncThunk(
             await new Promise((resolve: (value?: any) => void) => setTimeout(resolve, BACKOFF_DELAY));
           }
 
-          let serverData: Task | undefined;
-
           switch (operation.operation) {
             case 'CREATE': {
               const createdTask = await api.createTask({
                 title: operation.payload.title!,
                 amount: operation.payload.amount!,
               });
-              serverData = createdTask;
 
               dispatch(updateSyncStatus({
                 id: operation.taskId,
@@ -285,7 +292,6 @@ export const processSyncQueue = createAsyncThunk(
 
             case 'UPDATE': {
               const updatedTask = await api.updateTask(operation.taskId, operation.payload);
-              serverData = updatedTask;
 
               dispatch(updateSyncStatus({
                 id: operation.taskId,
@@ -300,6 +306,10 @@ export const processSyncQueue = createAsyncThunk(
               await api.deleteTask(operation.taskId);
               dispatch(deleteTaskLocal(operation.taskId));
               dispatch(removeSyncOperation(opId));
+              // Get updated state after deletion
+              const updatedState = getState() as RootState;
+              // Persist tasks immediately after DELETE operation
+              await storageService.saveTasks(updatedState.tasks.items);
               break;
             }
           }
