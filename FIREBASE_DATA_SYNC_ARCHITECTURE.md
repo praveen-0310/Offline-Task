@@ -8,7 +8,7 @@
 5. [Delete Functionality](#delete-functionality)
 6. [Key Components](#key-components)
 7. [Scenarios & Examples](#scenarios--examples)
-8. [Interview Questions & Answers](#interview-questions--answers)
+8. [Recent Updates](#recent-updates-february-12-2026)
 
 ---
 
@@ -79,19 +79,19 @@ Firestore Database
         └── tasks/                  (collection)
             │
             ├── 8Vg4MtWQTRVlbWfAHXfq
-            │   ├── title: "rwr"
+            │   ├── title: "Buy Groceries"
             │   ├── amount: 4342
             │   ├── createdAt: 1770867822141
             │   └── updatedAt: 1770867822141
             │
             ├── VWDs7LzGrC5KlxFzUpDZ
-            │   ├── title: "rer"
-            │   ├── amount: 23
+            │   ├── title: "Pay Electric Bill"
+            │   ├── amount: 2500
             │   └── ...
             │
             └── f4kUeHFVA979L3YjNRlD
-                ├── title: "fs"
-                ├── amount: 42
+                ├── title: "Schedule Doctor Appointment"
+                ├── amount: 500
                 └── ...
 ```
 
@@ -103,7 +103,7 @@ Firestore Database
   "TASKS": {
     "8Vg4MtWQTRVlbWfAHXfq": {
       id: "8Vg4MtWQTRVlbWfAHXfq",
-      title: "rwr",
+      title: "Buy Groceries",
       amount: 4342,
       createdAt: 1770867822141,
       updatedAt: 1770867822141,
@@ -134,7 +134,7 @@ Firestore Database
   items: {
     "8Vg4MtWQTRVlbWfAHXfq": {
       id: "8Vg4MtWQTRVlbWfAHXfq",
-      title: "rwr",
+      title: "Buy Groceries",
       amount: 4342,
       createdAt: 1770867822141,
       updatedAt: 1770867822141,
@@ -1249,19 +1249,13 @@ User Timeline:
 │  └─ Local storage: saved with server ID
 │  └─ UI: Task shows immediately ✅
 │
-├─ 3. Edit "Buy Milk" to "Buy Milk & Bread"
-│  └─ api.updateTask("doc_abc123", { title: "Buy Milk & Bread" })
-│  └─ Firebase updates ✅
-│  └─ Redux updated ✅
-│  └─ Local storage updated ✅
-│
-├─ 4. Delete "Buy Milk & Bread"
+├─ 3. Delete "Buy Milk"
 │  └─ api.deleteTask("doc_abc123")
 │  └─ Firebase deletes ✅
 │  └─ Redux removes ✅
 │  └─ Local storage removes ✅
 │
-└─ 5. Close app
+└─ 4. Close app
    └─ All data persisted ✅
 ```
 
@@ -1393,537 +1387,6 @@ User Timeline:
 │
 └─ 4. Data recovered! 🎉
 ```
-
----
-
-## Interview Questions & Answers
-
-### Q1: How do you prevent data loss when users clear app storage?
-
-**Answer:**
-We use a **fixed Firebase user account** + **Firestore** as the single source of truth:
-
-1. **Fixed Account:** All data is tied to one email/password account (`praveen.j.chand@gmail.com`), not device-specific anonymous auth.
-
-2. **Firestore Structure:** Data lives at `/users/{userId}/tasks/` in Firebase Cloud Firestore.
-
-3. **Bootstrap Logic:** When app starts:
-   - Check if local storage has data
-   - If empty, fetch from Firestore
-   - Restore to local storage and Redux
-   - User sees all previous tasks
-
-4. **Code Example:**
-```typescript
-// In bootstrapApp thunk
-if (Object.keys(tasks).length === 0) {
-  const firebaseTasks = await api.fetchTasks();  // Fetch from Firestore
-  await storageService.saveTasks(firebaseTasksMap);  // Repopulate local storage
-  return { tasks: firebaseTasksMap, ... };
-}
-```
-
-**Benefit:** Survives app clear, reinstall, and device change.
-
----
-
-### Q2: How does offline functionality work?
-
-**Answer:**
-We use a **sync queue** pattern:
-
-1. **When Offline:**
-   - Generate local ID: `generateId()` → "local_xyz789"
-   - Create task with `syncStatus: "PENDING"`
-   - Add operation to sync queue: `{ operation: "CREATE", taskId, payload, retryCount }`
-   - Save to both local storage and sync queue
-
-2. **When Back Online:**
-   - `useSyncOnNetworkRestore` detects network change
-   - Dispatches `processSyncQueue()`
-   - Processes each operation sequentially
-   - Firebase returns real server ID
-   - Updates Redux with merge: `items["local_id"] → items["server_id"]`
-   - Removes from sync queue
-
-3. **Code Example:**
-```typescript
-// Offline: create with local ID
-const taskId = generateId();  // "local_xyz789"
-const syncOp = {
-  id: "op_1",
-  taskId,
-  operation: "CREATE",
-  payload: { title, amount },
-  retryCount: 0
-};
-
-// Online: process sync queue
-const createdTask = await api.createTask(payload);  // Gets server ID
-dispatch(updateSyncStatus({
-  id: "local_xyz789",
-  status: "SYNCED",
-  serverData: { id: createdTask.id, ... }  // Merge server data
-}));
-```
-
----
-
-### Q3: How do you avoid duplicate data in Redux and local storage?
-
-**Answer:**
-Tasks are keyed by `id` in both Redux and local storage:
-
-```typescript
-// Redux: items is an object keyed by ID
-items: {
-  "doc_abc123": { id: "doc_abc123", title: "Task", ... },
-  "doc_def456": { id: "doc_def456", title: "Task 2", ... }
-}
-
-// Local storage: same structure
-AsyncStorage.setItem("TASKS", JSON.stringify({
-  "doc_abc123": { ... },
-  "doc_def456": { ... }
-}))
-```
-
-**How it prevents duplicates:**
-- Same ID = overwrites previous entry (no duplicates)
-- `Object.assign()` merges server data into local task
-- Bootstrap only fetches if storage is empty (no re-fetch)
-
-**Example:**
-```typescript
-// Offline: create with local_xyz789
-items["local_xyz789"] = { id: "local_xyz789", syncStatus: "PENDING" }
-
-// Online: sync returns server ID
-items["local_xyz789"] = { id: "server_id_1", syncStatus: "SYNCED" }  // Merged!
-delete items["local_xyz789"]  // Remove old entry
-items["server_id_1"] = merged task  // Add with server ID
-```
-
----
-
-### Q4: What happens if sync fails?
-
-**Answer:**
-We have a **retry mechanism with exponential backoff**:
-
-```typescript
-if (operation.retryCount >= MAX_RETRIES) {
-  dispatch(updateSyncStatus({
-    id: operation.taskId,
-    status: 'FAILED',  // Mark as failed after max retries
-  }));
-  failureCount++;
-  continue;
-}
-
-// Exponential backoff
-const BACKOFF_DELAY = 1000 * Math.pow(2, operation.retryCount);
-await new Promise(resolve => setTimeout(resolve, BACKOFF_DELAY));
-
-// Retry
-dispatch(updateSyncOperation({
-  id: opId,
-  updates: { retryCount: operation.retryCount + 1 }
-}));
-```
-
-**Flow:**
-1. First attempt: immediate
-2. Second attempt: wait 2s, then retry
-3. Third attempt: wait 4s, then retry
-4. Fourth attempt: wait 8s, then retry
-5. Max retries exceeded: mark as FAILED
-
-**User sees:** "Retry Failed Syncs" button in UI for failed tasks
-
----
-
-### Q5: What's the difference between `id` and `localId`?
-
-**Answer:**
-Both are the same most of the time, but they serve different purposes:
-
-```typescript
-interface Task {
-  id: string;        // Current identifier (could be local or server)
-  localId: string;   // Original local ID for tracking
-  syncStatus: 'SYNCED' | 'PENDING' | 'FAILED';
-}
-```
-
-**Example:**
-```typescript
-// When creating offline
-const taskId = generateId();  // "local_xyz789"
-const newTask = {
-  id: "local_xyz789",        // Current ID (local)
-  localId: "local_xyz789",   // Original local ID
-  syncStatus: "PENDING"
-};
-
-// After sync
-{
-  id: "server_id_1",         // Changed to server ID
-  localId: "local_xyz789",   // Still tracks original local ID
-  syncStatus: "SYNCED"       // Now synced
-};
-```
-
-**Why?** Tracking for debugging and audit logs. Not critical for functionality.
-
----
-
-### Q6: How does authentication work with the fixed user?
-
-**Answer:**
-We use **email/password auth** instead of anonymous:
-
-```typescript
-// On every app launch
-const initializeAuthUser = async () => {
-  if (!auth.currentUser) {
-    await signInWithEmailAndPassword(
-      auth,
-      'praveen.j.chand@gmail.com',
-      'j.praveen'
-    );
-  }
-};
-
-export const authReady = initializeAuthUser();
-```
-
-**Benefits over anonymous auth:**
-- ✅ Same user ID always: `n8XeJHnnBPgRH1kQBHjvpD90DYy1`
-- ✅ Works after app data clear
-- ✅ Works after reinstall
-- ✅ Works across devices
-- ❌ No real user management (hardcoded account)
-
-**Firebase Security Rules:**
-```javascript
-match /users/{userId}/tasks/{taskId} {
-  allow read, write: if request.auth != null && request.auth.uid == userId;
-}
-```
-
-Only the authenticated user can access their own tasks.
-
----
-
-### Q7: What's the Redux state structure for tasks?
-
-**Answer:**
-
-```typescript
-// In Redux store
-state.tasks = {
-  items: {
-    "doc_abc123": {
-      id: "doc_abc123",
-      title: "Buy Groceries",
-      amount: 500,
-      createdAt: 1770867822141,
-      updatedAt: 1770867822141,
-      syncStatus: "SYNCED",
-      localId: "doc_abc123"
-    },
-    "local_xyz789": {
-      id: "local_xyz789",
-      title: "Pay Bills",
-      amount: 5000,
-      createdAt: 1770867822141,
-      updatedAt: 1770867822141,
-      syncStatus: "PENDING",
-      localId: "local_xyz789"
-    }
-  },
-  loading: false,
-  error: null
-}
-
-state.sync = {
-  queue: {
-    "op_1": {
-      id: "op_1",
-      taskId: "local_xyz789",
-      operation: "CREATE",
-      payload: { title: "Pay Bills", amount: 5000 },
-      retryCount: 0,
-      createdAt: 1770867822141
-    }
-  },
-  isSyncing: false,
-  lastSyncTime: 1770867822141,
-  syncError: null
-}
-
-state.network = {
-  isConnected: true,
-  isInternetReachable: true
-}
-```
-
-**Selectors:**
-```typescript
-// Get all tasks as array
-export const selectTasksArray = createSelector(
-  [selectTasksItems],
-  (items) => Object.values(items).reverse()
-);
-
-// Get task by ID
-export const selectTaskById = (id: string) =>
-  createSelector([selectTasksItems], (items) => items[id]);
-
-// Get pending tasks
-export const selectPendingTasks = createSelector(
-  [selectTasksItems],
-  (items) => Object.values(items).filter(t => t.syncStatus === 'PENDING')
-);
-```
-
----
-
-### Q8: Walk me through creating a task end-to-end (online)
-
-**Answer:**
-
-```
-User taps "Create Task" → navigates to CreateTaskScreen
-                ↓
-User enters: title = "Buy Milk", amount = 100
-                ↓
-User taps "Create" button
-                ↓
-dispatch(createTask({ title: "Buy Milk", amount: 100 }))
-                ↓
-createTask thunk runs:
-  ├─ Check network: isOnline = true ✅
-  │
-  ├─ Call api.createTask({title, amount})
-  │  ├─ getCurrentUserId() → "n8XeJHnnBPgRH1kQBHjvpD90DYy1"
-  │  ├─ collection(db, 'users', userId, 'tasks')
-  │  ├─ addDoc(tasksRef, {title, amount, createdAt, updatedAt})
-  │  ├─ Firebase returns docRef with ID: "doc_abc123"
-  │  └─ Returns: { id: "doc_abc123", title, amount, ... }
-  │
-  ├─ Return {
-  │    task: { id: "doc_abc123", title, amount, syncStatus: "SYNCED" },
-  │    syncOp: null,
-  │    wasOnline: true
-  │  }
-  │
-  └─ ✅
-                ↓
-createTask extraReducer runs:
-  ├─ addTaskLocal action dispatched
-  ├─ Redux state updated:
-  │  └─ items["doc_abc123"] = {
-  │      id: "doc_abc123",
-  │      title: "Buy Milk",
-  │      amount: 100,
-  │      syncStatus: "SYNCED",
-  │      ...
-  │    }
-  │
-  └─ ✅
-                ↓
-Store subscription triggered (every 500ms):
-  ├─ persistState() called
-  ├─ AsyncStorage.setItem("TASKS", JSON.stringify({
-  │    "doc_abc123": {...}
-  │  }))
-  │
-  └─ ✅
-                ↓
-CreateTaskScreen component receives updated state:
-  ├─ Navigation back to TaskListScreen
-  │
-  ├─ selectTasksArray selector:
-  │  └─ Object.values(items).reverse()
-  │  └─ [{id: "doc_abc123", ...}]
-  │
-  ├─ TaskListScreen renders with new task
-  │
-  └─ ✅ User sees task immediately!
-```
-
----
-
-### Q9: Walk me through syncing offline tasks (online)
-
-**Answer:**
-
-```
-User was offline, created 2 tasks:
-  ├─ Task 1: {id: "local_1", title: "Task 1", syncStatus: "PENDING"}
-  ├─ Task 2: {id: "local_2", title: "Task 2", syncStatus: "PENDING"}
-  │
-  └─ Sync Queue: {
-       "op_1": {taskId: "local_1", operation: "CREATE", ...},
-       "op_2": {taskId: "local_2", operation: "CREATE", ...}
-     }
-                ↓
-Network changes to online
-                ↓
-useSyncOnNetworkRestore hook:
-  ├─ useAppSelector network state
-  ├─ Detect transition: offline → online ✅
-  ├─ dispatch(processSyncQueue())
-  │
-  └─ ✅
-                ↓
-processSyncQueue thunk runs:
-  ├─ Check: isConnected = true ✅
-  ├─ Check: syncQueue has 2 operations ✅
-  │
-  ├─ LOOP through operations sequentially:
-  │
-  │  Operation 1: CREATE "Task 1"
-  │  ├─ api.createTask({title: "Task 1", amount: ...})
-  │  │  ├─ Firebase creates doc
-  │  │  ├─ Returns: {id: "server_1", title: "Task 1", ...}
-  │  │  │
-  │  │  └─ ✅
-  │  │
-  │  ├─ dispatch(updateSyncStatus({
-  │  │    id: "local_1",
-  │  │    status: "SYNCED",
-  │  │    serverData: {id: "server_1", ...}
-  │  │  }))
-  │  │
-  │  ├─ Redux reducer:
-  │  │  └─ task = items["local_1"]
-  │  │  └─ task.syncStatus = "SYNCED"
-  │  │  └─ Object.assign(task, serverData)
-  │  │  └─ Now: items["local_1"] = {id: "server_1", syncStatus: "SYNCED", ...}
-  │  │
-  │  ├─ dispatch(removeSyncOperation("op_1"))
-  │  │  └─ Remove "op_1" from sync queue
-  │  │
-  │  └─ ✅
-  │
-  │  Operation 2: CREATE "Task 2"
-  │  ├─ Same process as Operation 1
-  │  ├─ Firebase returns: {id: "server_2", title: "Task 2", ...}
-  │  ├─ updateSyncStatus → Redux updated
-  │  ├─ removeSyncOperation → removed from queue
-  │  │
-  │  └─ ✅
-  │
-  ├─ After loop:
-  │  ├─ Redux state: {
-  │  │    items: {
-  │  │      "server_1": {id: "server_1", syncStatus: "SYNCED"},
-  │  │      "server_2": {id: "server_2", syncStatus: "SYNCED"}
-  │  │    },
-  │  │    queue: {}  (empty)
-  │  │  }
-  │  │
-  │  ├─ Persist to storage:
-  │  │  ├─ AsyncStorage.setItem("TASKS", {...})
-  │  │  └─ AsyncStorage.setItem("SYNC_QUEUE", {})
-  │  │
-  │  └─ Return: {successCount: 2, failureCount: 0}
-  │
-  └─ ✅
-                ↓
-TaskListScreen renders:
-  ├─ selectTasksArray:
-  │  └─ [{id: "server_1", ...}, {id: "server_2", ...}]
-  │
-  ├─ Both tasks show with "✓ Synced" badge
-  │
-  └─ ✅ Sync complete!
-```
-
----
-
-### Q10: What happens if Firebase is unreachable?
-
-**Answer:**
-
-```
-User tries to create task while Firebase is down (network OK, Firebase down)
-                ↓
-dispatch(createTask({...}))
-                ↓
-createTask thunk:
-  ├─ Check: isOnline = true ✅
-  ├─ Try: api.createTask({...})
-  │  │
-  │  ├─ Firebase call times out or returns error
-  │  ├─ Catch block: error instanceof APIError
-  │  │  └─ error.retryable = true ✅
-  │  │
-  │  └─ Fall back to offline mode ✅
-  │
-  ├─ Generate local ID: "local_xyz789"
-  ├─ Create task with syncStatus: "PENDING"
-  ├─ Add to sync queue with operation: "CREATE"
-  │
-  └─ Return {task, syncOp, wasOnline: false}
-                ↓
-Redux state updated:
-  ├─ items["local_xyz789"] = {id: "local_xyz789", syncStatus: "PENDING"}
-  ├─ queue["op_1"] = {taskId: "local_xyz789", operation: "CREATE", ...}
-  │
-  └─ UI shows task with "Pending..." badge
-                ↓
-Later: Firebase comes back online AND network reconnected
-                ↓
-useSyncOnNetworkRestore:
-  ├─ Detects: offline → online ✅
-  ├─ dispatch(processSyncQueue())
-  │
-  └─ ✅
-                ↓
-processSyncQueue:
-  ├─ Try: api.createTask({...}) again
-  │  └─ Firebase now responds ✅
-  │
-  ├─ Success:
-  │  ├─ updateSyncStatus → {id: "local_xyz789", status: "SYNCED", ...}
-  │  ├─ removeSyncOperation → removed from queue
-  │  │
-  │  └─ ✅ Task now synced!
-  │
-  └─ Failure (max retries):
-     ├─ updateSyncStatus → {id: "local_xyz789", status: "FAILED"}
-     ├─ Show "Retry Failed Syncs" button
-     │
-     └─ User can retry manually
-```
-
----
-
-## Summary
-
-This architecture provides:
-
-| Feature | How It Works |
-|---------|-------------|
-| **Offline** | Local storage + Redux keeps app functional |
-| **Sync** | Sync queue processes on network restore |
-| **Persistence** | Firebase Firestore + local storage redundancy |
-| **No Data Loss** | Fixed user account survives app clear |
-| **Conflict Resolution** | Last-write-wins via timestamps |
-| **Error Handling** | Retry logic with exponential backoff |
-| **State Sync** | Redux + AsyncStorage + Firestore in sync |
-
-**Key Files:**
-- `src/config/firebase.ts` - Firebase init + auth
-- `src/services/firebaseAPI.ts` - Database operations
-- `src/store/thunks/syncThunks.ts` - Sync logic
-- `src/store/slices/tasksSlice.ts` - Redux state
-- `src/services/storage.ts` - Local persistence
-- `src/hooks/useSyncOnNetworkRestore.ts` - Auto-sync
 
 ---
 
