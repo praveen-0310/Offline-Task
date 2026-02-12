@@ -19,11 +19,17 @@ const initializeAuthUser = async () => {
   try {
     await new Promise((resolve: (value?: any) => void) => setTimeout(resolve, 50));
 
+    // Always attempt to sign in with the fixed user to ensure consistency across devices
+    // This guarantees APK and emulator use the same Firebase user
     if (!auth.currentUser) {
-      await signInWithEmailAndPassword(auth, FIXED_USER_EMAIL, FIXED_USER_PASSWORD);
-    }
+      try {
+        await signInWithEmailAndPassword(auth, FIXED_USER_EMAIL, FIXED_USER_PASSWORD);
+      } catch (signInError: any) {
+        console.warn('⚠️ Fixed user sign-in failed:', signInError?.code, signInError?.message);
+      }
+    } 
   } catch (error) {
-    console.warn('Fixed user sign-in failed:', error);
+    console.warn('❌ Auth initialization error:', error);
   }
 };
 

@@ -22,7 +22,7 @@ export class APIError extends Error {
 }
 
 export const firebaseAPI = {
- 
+
   getCurrentUserId(): string {
     const userId = auth.currentUser?.uid;
     if (!userId) {
@@ -31,7 +31,18 @@ export const firebaseAPI = {
     return userId;
   },
 
- 
+  // Debug method to verify the authenticated user
+  getCurrentUserInfo(): { uid: string; email: string | null } {
+    const user = auth.currentUser;
+    if (!user) {
+      return { uid: 'NOT_AUTHENTICATED', email: null };
+    }
+    return {
+      uid: user.uid,
+      email: user.email,
+    };
+  },
+
   async fetchTasks(): Promise<Task[]> {
     try {
       const userId = this.getCurrentUserId();
@@ -60,7 +71,6 @@ export const firebaseAPI = {
     }
   },
 
- 
   async createTask(
     taskData: Omit<Task, 'id' | 'syncStatus' | 'createdAt' | 'updatedAt' | 'localId'>
   ): Promise<Task> {
@@ -93,7 +103,6 @@ export const firebaseAPI = {
     }
   },
 
-
   async updateTask(id: string, updates: Partial<Task>): Promise<Task> {
     try {
       const userId = this.getCurrentUserId();
@@ -113,7 +122,6 @@ export const firebaseAPI = {
       const taskRef = doc(db, 'users', userId, 'tasks', id);
       await updateDoc(taskRef, updateData);
 
-      // Return updated task
       return {
         id,
         title: updates.title || '',
@@ -131,7 +139,6 @@ export const firebaseAPI = {
     }
   },
 
- 
   async deleteTask(id: string): Promise<void> {
     try {
       const userId = this.getCurrentUserId();
@@ -145,7 +152,6 @@ export const firebaseAPI = {
     }
   },
 
-  
   async deleteTasks(ids: string[]): Promise<void> {
     try {
       if (ids.length === 0) return;

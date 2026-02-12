@@ -26,27 +26,27 @@ export const bootstrapApp = createAsyncThunk(
         storageService.getLastSync(),
       ]);
 
-      // If local storage is empty, fetch from Firebase
-      if (Object.keys(tasks).length === 0) {
-        try {
-          const firebaseTasks = await api.fetchTasks();
-          const firebaseTasksMap: Record<string, Task> = {};
+      // Always try to fetch from Firebase to ensure data consistency across devices
+      // This is critical because different devices have separate local storage
+      try {
+        console.log('📥 Fetching latest tasks from Firebase...');
+        const firebaseTasks = await api.fetchTasks();
+        const firebaseTasksMap: Record<string, Task> = {};
 
-          firebaseTasks.forEach((task) => {
-            firebaseTasksMap[task.id] = task;
-          });
+        firebaseTasks.forEach((task) => {
+          firebaseTasksMap[task.id] = task;
+        });
 
-          // Save fetched tasks to local storage
-          await storageService.saveTasks(firebaseTasksMap);
+        // Save fetched tasks to local storage
+        await storageService.saveTasks(firebaseTasksMap);
+        console.log('✅ Successfully synced', firebaseTasks.length, 'tasks from Firebase');
 
-          return { tasks: firebaseTasksMap, syncQueue, lastSync };
-        } catch (error) {
-          console.warn('Failed to fetch from Firebase:', error);
-          return { tasks, syncQueue, lastSync };
-        }
+        return { tasks: firebaseTasksMap, syncQueue, lastSync };
+      } catch (error) {
+        console.warn('⚠️ Failed to fetch from Firebase, using local cache:', error);
+        // Fall back to local cache if Firebase fetch fails
+        return { tasks, syncQueue, lastSync };
       }
-
-      return { tasks, syncQueue, lastSync };
     } catch (error) {
       console.warn('Bootstrap failed, starting with empty state:', error);
       return rejectWithValue('Failed to bootstrap app');
@@ -366,6 +366,29 @@ export const retryFailedOperation = createAsyncThunk(
     } catch (error) {
       console.warn('Error retrying operation:', error);
       return rejectWithValue('Failed to retry operation');
+    }
+  }
+);
+
+// Force refresh tasks from Firebase - ensures data consistency across devices
+export const forceRefreshTasks = createAsyncThunk(
+  'sync/forceRefresh',
+  async (_, { rejectWithValue }) => {
+    try {
+
+      const firebaseTasks = await api.fetchTasks();
+      const firebaseTasksMap: Record<string, Task> = {};
+
+      firebaseTasks.forEach((task) => {
+        firebaseTasksMap[task.id] = task;
+      });
+
+      // Save fetched tasks to local storage
+      await storageService.saveTasks(firebaseTasksMap);
+
+      return { tasks: firebaseTasksMap, refreshTime: Date.now() };
+    } catch (error) {
+      return rejectWithValue(error instanceof Error ? error.message : 'Force refresh failed');
     }
   }
 );

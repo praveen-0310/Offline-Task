@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   FlatList,
@@ -20,6 +20,8 @@ import {
 import { processSyncQueue, deleteTask } from '../store/thunks/syncThunks';
 import { selectTasksArray } from '../store/slices/tasksSlice';
 import { Task } from '../types';
+import { firebaseAPI } from '../services/firebaseAPI';
+import { authReady } from '../config/firebase';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'TaskList'>;
 
@@ -29,6 +31,18 @@ export const TaskListScreen: React.FC<Props> = ({ navigation }) => {
   const isSyncing = useAppSelector((state) => state.sync.isSyncing);
   const isConnected = useAppSelector((state) => state.network.isConnected);
   const isLoading = useAppSelector((state) => state.tasks.loading);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Wait for auth to be ready, then get user email
+    authReady.then(() => {
+      const userInfo = firebaseAPI.getCurrentUserInfo();
+      console.log('📧 User info:', userInfo);
+      setUserEmail(userInfo.email);
+    }).catch((error) => {
+      console.warn('Failed to load user info:', error);
+    });
+  }, []);
 
   const handleEditPress = (task: Task) => {
     navigation.navigate('EditTask', { taskId: task.id });
@@ -85,6 +99,9 @@ export const TaskListScreen: React.FC<Props> = ({ navigation }) => {
 
       <View style={stylesheet.header}>
         <Text style={stylesheet.headerTitle}>Tasks</Text>
+        {userEmail && (
+          <Text style={stylesheet.headerEmail}>{userEmail}</Text>
+        )}
       </View>
 
       {isSyncing && (
@@ -154,6 +171,16 @@ const stylesheet = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2937',
     letterSpacing: -0.5,
+    flex: 1,
+  },
+  headerEmail: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 6,
   },
   content: {
     flex: 1,
