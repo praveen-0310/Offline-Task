@@ -5,9 +5,10 @@
 2. [Authentication System](#authentication-system)
 3. [Data Storage Structure](#data-storage-structure)
 4. [Complete Data Flow](#complete-data-flow)
-5. [Key Components](#key-components)
-6. [Scenarios & Examples](#scenarios--examples)
-7. [Interview Questions & Answers](#interview-questions--answers)
+5. [Delete Functionality](#delete-functionality)
+6. [Key Components](#key-components)
+7. [Scenarios & Examples](#scenarios--examples)
+8. [Interview Questions & Answers](#interview-questions--answers)
 
 ---
 
@@ -375,6 +376,353 @@ Network restored → useSyncOnNetworkRestore detects change
    - local_id_1 → server_id_1 (SYNCED)
    - local_id_2 → server_id_2 (SYNCED)
 ```
+
+---
+
+## Delete Functionality
+
+### Overview
+
+Delete operations follow the same **offline-first** pattern as CREATE and UPDATE. Tasks can be deleted whether online or offline, with automatic Firebase syncing when connection is restored.
+
+### Delete Operation Type
+
+Added to `Operation` type in `src/types/index.ts`:
+
+```typescript
+export type Operation = 'CREATE' | 'UPDATE' | 'DELETE';
+```
+
+### 1. Deleting a Task (Online)
+
+```
+User taps delete button on task
+│
+├─ TaskListScreen shows confirmation alert
+│  └─ "Are you sure you want to delete this task?"
+│
+├─ User confirms
+│  └─ dispatch(deleteTask(taskId))
+│
+├─ deleteTask thunk runs
+│  ├─ Check: isOnline = true ✅
+│  │
+│  ├─ Call: api.deleteTask(taskId)
+│  │  ├─ Get userId from auth
+│  │  ├─ Reference: doc(db, 'users', userId, 'tasks', taskId)
+│  │  ├─ deleteDoc(taskRef)
+│  │  └─ Firebase deletes document ✅
+│  │
+│  ├─ Call: dispatch(deleteTaskLocal(taskId))
+│  │  └─ Redux removes from items[taskId]
+│  │
+│  └─ Return: { taskId, wasOnline: true }
+│
+├─ Redux state updated
+│  └─ Task removed from items object
+│
+├─ Store subscription:
+│  └─ AsyncStorage.setItem("TASKS", updatedTasks)
+│  └─ Task removed from local storage ✅
+│
+└─ UI updates immediately
+   └─ Task disappears from task list ✅
+```
+
+### 2. Deleting a Task (Offline)
+
+```
+User taps delete button while offline
+│
+├─ TaskListScreen shows confirmation alert
+│
+├─ User confirms
+│  └─ dispatch(deleteTask(taskId))
+│
+├─ deleteTask thunk runs
+│  ├─ Check: isOnline = false ❌
+│  │
+│  ├─ Call: dispatch(deleteTaskLocal(taskId))
+│  │  └─ Redux removes from items[taskId]
+│  │
+│  ├─ Create sync operation
+│  │  └─ {
+│  │      id: "op_xyz",
+│  │      taskId: "doc_abc123",
+│  │      operation: "DELETE",
+│  │      payload: {},
+│  │      retryCount: 0,
+│  │      createdAt: Date.now()
+│  │    }
+│  │
+│  ├─ Call: dispatch(enqueueSyncOperation(syncOp))
+│  │  └─ Added to sync queue
+│  │
+│  └─ Return: { taskId, syncOp, wasOnline: false }
+│
+├─ Redux state updated
+│  └─ items[taskId] removed
+│  └─ queue["op_xyz"] added
+│
+├─ Store subscription:
+│  ├─ AsyncStorage.setItem("TASKS", updatedTasks)
+│  │  └─ Task removed from local storage ✅
+│  │
+│  └─ AsyncStorage.setItem("SYNC_QUEUE", queue)
+│     └─ DELETE operation queued ✅
+│
+└─ UI updates immediately
+   └─ Task appears deleted locally ✅
+```
+
+### 3. Syncing Delete Operations (When Back Online)
+
+```
+App was offline, user deleted 2 tasks:
+  ├─ DELETE task_1
+  └─ DELETE task_2
+
+Sync queue: {
+  "op_1": { taskId: "task_1", operation: "DELETE", ... },
+  "op_2": { taskId: "task_2", operation: "DELETE", ... }
+}
+                ↓
+Network restores to online
+                ↓
+useSyncOnNetworkRestore:
+  ├─ Detect: offline → online ✅
+  ├─ dispatch(processSyncQueue())
+  └─ ✅
+                ↓
+processSyncQueue thunk:
+  ├─ Check: isConnected = true ✅
+  ├─ Check: syncQueue has 2 operations ✅
+  │
+  ├─ LOOP through operations sequentially:
+  │
+  │  Operation 1: DELETE task_1
+  │  ├─ api.deleteTask("task_1")
+  │  │  ├─ doc(db, 'users', userId, 'tasks', 'task_1')
+  │  │  ├─ deleteDoc(taskRef)
+  │  │  ├─ Firebase deletes document ✅
+  │  │  └─ Returns void
+  │  │
+  │  ├─ dispatch(deleteTaskLocal("task_1"))
+  │  │  └─ Ensure removed from Redux (already removed)
+  │  │
+  │  ├─ dispatch(removeSyncOperation("op_1"))
+  │  │  └─ Remove operation from queue
+  │  │
+  │  └─ ✅
+  │
+  │  Operation 2: DELETE task_2
+  │  ├─ Same process as Operation 1
+  │  ├─ Firebase deletes ✅
+  │  ├─ Redux updated
+  │  ├─ Remove from queue
+  │  │
+  │  └─ ✅
+  │
+  ├─ After loop:
+  │  ├─ Sync queue now empty: {}
+  │  ├─ Persist to storage:
+  │  │  ├─ AsyncStorage.setItem("TASKS", {...})
+  │  │  └─ AsyncStorage.setItem("SYNC_QUEUE", {})
+  │  │
+  │  └─ Return: {successCount: 2, failureCount: 0}
+  │
+  └─ ✅
+                ↓
+TaskListScreen renders:
+  ├─ selectTasksArray
+  │  └─ Both tasks no longer in items
+  │
+  ├─ Task list updated
+  │  └─ Shows remaining tasks
+  │
+  └─ ✅ Sync complete!
+```
+
+### Delete Code Structure
+
+#### Types (`src/types/index.ts`)
+
+```typescript
+export type Operation = 'CREATE' | 'UPDATE' | 'DELETE';
+```
+
+#### Reducer (`src/store/slices/tasksSlice.ts`)
+
+```typescript
+reducers: {
+  // ... other reducers
+
+  deleteTaskLocal: (state, action: PayloadAction<string>) => {
+    delete state.items[action.payload];  // Remove task from state
+  },
+},
+
+export const { ..., deleteTaskLocal } = tasksSlice.actions;
+```
+
+#### Thunk (`src/store/thunks/syncThunks.ts`)
+
+```typescript
+export const deleteTask = createAsyncThunk(
+  'sync/deleteTask',
+  async (taskId: string, { getState, dispatch, rejectWithValue }) => {
+    const state = getState() as RootState;
+    const task = state.tasks.items[taskId];
+
+    if (!task) return rejectWithValue('Task not found');
+
+    const isOnline = state.network.isConnected && state.network.isInternetReachable !== false;
+
+    if (isOnline) {
+      try {
+        await api.deleteTask(taskId);
+        dispatch(deleteTaskLocal(taskId));
+        return { taskId, wasOnline: true };
+      } catch (error) {
+        // Fall back to offline mode
+      }
+    }
+
+    // Offline: delete locally + queue for sync
+    dispatch(deleteTaskLocal(taskId));
+
+    const syncOp: SyncQueue = {
+      id: generateId(),
+      taskId,
+      operation: 'DELETE',
+      payload: {},
+      retryCount: 0,
+      createdAt: Date.now(),
+    };
+
+    dispatch(enqueueSyncOperation(syncOp));
+
+    return { taskId, syncOp, wasOnline: false };
+  }
+);
+```
+
+#### Sync Processing (`src/store/thunks/syncThunks.ts`)
+
+```typescript
+export const processSyncQueue = createAsyncThunk(
+  'sync/processQueue',
+  async (_, { getState, dispatch, rejectWithValue }) => {
+    // ... (existing code for CREATE and UPDATE)
+
+    for (const opId of Object.keys(syncQueue)) {
+      const operation = syncQueue[opId];
+
+      try {
+        switch (operation.operation) {
+          case 'CREATE':
+            // ... existing code
+
+          case 'UPDATE':
+            // ... existing code
+
+          case 'DELETE': {
+            await api.deleteTask(operation.taskId);
+            dispatch(deleteTaskLocal(operation.taskId));
+            dispatch(removeSyncOperation(opId));
+            break;
+          }
+        }
+
+        results.push({ opId, success: true });
+        successCount++;
+      } catch (error) {
+        // ... existing error handling
+      }
+    }
+
+    return { successCount, failureCount };
+  }
+);
+```
+
+#### UI (`src/screens/TaskListScreen.tsx`)
+
+```typescript
+const handleDeletePress = (task: Task) => {
+  Alert.alert(
+    'Delete Task',
+    `Are you sure you want to delete "${task.title}"?`,
+    [
+      {
+        text: 'Cancel',
+        onPress: () => {},
+        style: 'cancel',
+      },
+      {
+        text: 'Delete',
+        onPress: () => {
+          dispatch(deleteTask(task.id));
+        },
+        style: 'destructive',
+      },
+    ]
+  );
+};
+
+const renderTaskCard = ({ item, index }: { item: Task; index: number }) => (
+  <TaskCard
+    task={item}
+    onEditPress={() => handleEditPress(item)}
+    onDeletePress={() => handleDeletePress(item)}
+    index={index}
+  />
+);
+```
+
+#### TaskCard Component (`src/components/TaskCard.tsx`)
+
+```typescript
+interface Props {
+  task: Task;
+  onEditPress: () => void;
+  onDeletePress: () => void;
+  index?: number;
+}
+
+export const TaskCard: React.FC<Props> = ({ task, onEditPress, onDeletePress, index = 0 }) => {
+  return (
+    // ... (existing code)
+    <View style={stylesheet.actions}>
+      {isEditable && (
+        <TouchableOpacity
+          style={stylesheet.editButton}
+          onPress={onEditPress}
+          activeOpacity={0.7}
+        >
+          <Text style={stylesheet.editIcon}>✎</Text>
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity
+        style={stylesheet.deleteButton}
+        onPress={onDeletePress}
+        activeOpacity={0.7}
+      >
+        <Text style={stylesheet.deleteIcon}>🗑</Text>
+      </TouchableOpacity>
+    </View>
+    // ... (existing code)
+  );
+};
+```
+
+### Delete Data Flow Summary
+
+| Scenario | Local State | Firebase | Sync Queue | Result |
+|----------|------------|----------|-----------|--------|
+| **Delete Online** | Removed immediately | Deleted immediately | N/A | Task gone everywhere ✅ |
+| **Delete Offline** | Removed immediately | Pending delete | DELETE op queued | Task gone locally, syncs later |
+| **Back Online** | Already gone | Deleted during sync | Processed & cleared | Both in sync ✅ |
 
 ---
 
