@@ -1956,7 +1956,6 @@ export const bootstrapApp = createAsyncThunk(
 
       // ✅ NOW: Always fetch from Firebase (not just if local storage empty)
       try {
-        console.log('📥 Fetching latest tasks from Firebase...');
         const firebaseTasks = await api.fetchTasks();
         const firebaseTasksMap: Record<string, Task> = {};
 
@@ -1966,7 +1965,6 @@ export const bootstrapApp = createAsyncThunk(
 
         // Save fetched tasks to local storage
         await storageService.saveTasks(firebaseTasksMap);
-        console.log('✅ Successfully synced', firebaseTasks.length, 'tasks from Firebase');
 
         return { tasks: firebaseTasksMap, syncQueue, lastSync };
       } catch (error) {
@@ -1998,7 +1996,6 @@ export const forceRefreshTasks = createAsyncThunk(
   'sync/forceRefresh',
   async (_, { rejectWithValue }) => {
     try {
-      console.log('🔄 Force refreshing tasks from Firebase...');
 
       const firebaseTasks = await api.fetchTasks();
       const firebaseTasksMap: Record<string, Task> = {};
@@ -2009,7 +2006,6 @@ export const forceRefreshTasks = createAsyncThunk(
 
       // Save fetched tasks to local storage
       await storageService.saveTasks(firebaseTasksMap);
-      console.log('✅ Force refresh complete:', firebaseTasks.length, 'tasks');
 
       return { tasks: firebaseTasksMap, refreshTime: Date.now() };
     } catch (error) {
@@ -2064,7 +2060,6 @@ useEffect(() => {
   // Wait for auth to be ready, then get user email
   authReady.then(() => {
     const userInfo = firebaseAPI.getCurrentUserInfo();
-    console.log('📧 User info:', userInfo);
     setUserEmail(userInfo.email);
   }).catch((error) => {
     console.warn('Failed to load user info:', error);

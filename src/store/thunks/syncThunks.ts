@@ -28,7 +28,6 @@ export const bootstrapApp = createAsyncThunk(
       // Always try to fetch from Firebase to ensure data consistency across devices
       // This is critical because different devices have separate local storage
       try {
-        console.log('📥 Fetching latest tasks from Firebase...');
         const firebaseTasks = await api.fetchTasks();
         const firebaseTasksMap: Record<string, Task> = {};
 
@@ -38,7 +37,6 @@ export const bootstrapApp = createAsyncThunk(
 
         // Save fetched tasks to local storage
         await storageService.saveTasks(firebaseTasksMap);
-        console.log('✅ Successfully synced', firebaseTasks.length, 'tasks from Firebase');
 
         return { tasks: firebaseTasksMap, syncQueue };
       } catch (error) {
