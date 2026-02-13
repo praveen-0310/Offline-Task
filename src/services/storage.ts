@@ -32,20 +32,6 @@ export const storageService = {
     }
   },
 
-  // last sync timestamp
-  async setLastSync(timestamp: number): Promise<void> {
-    await storage.setItem(STORAGE_KEYS.LAST_SYNC, timestamp.toString());
-  },
-
-  async getLastSync(): Promise<number | null> {
-    try {
-      const data = await storage.getItem(STORAGE_KEYS.LAST_SYNC);
-      return data ? parseInt(data, 10) : null;
-    } catch {
-      return null;
-    }
-  },
-
   // clear all persisted data
   async clearAll(): Promise<void> {
     await storage.clear();
