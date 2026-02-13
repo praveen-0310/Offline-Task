@@ -37,7 +37,6 @@ export const TaskListScreen: React.FC<Props> = ({ navigation }) => {
     // Wait for auth to be ready, then get user email
     authReady.then(() => {
       const userInfo = firebaseAPI.getCurrentUserInfo();
-      console.log('📧 User info:', userInfo);
       setUserEmail(userInfo.email);
     }).catch((error) => {
       console.warn('Failed to load user info:', error);

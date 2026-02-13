@@ -11,8 +11,8 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export const RootNavigator: React.FC = () => {
   const dispatch = useAppDispatch();
 
-  useNetworkListener();
-  useSyncOnNetworkRestore();
+  useNetworkListener();//Tracks connection status
+  useSyncOnNetworkRestore();//When internet comes back → sync pending changes	,Don't lose offline edits
 
   useEffect(() => {
     // loading  the persisted data in app start
